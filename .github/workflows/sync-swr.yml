@@ -11,9 +11,9 @@ env:
   SWR_NAMESPACE: library
   # 需要同步的镜像列表 格式：仓库名/镜像:标签
   IMAGE_LIST: |
-    library/mysql:8.0
-    requarks/wiki:2
-    library/postgres:17
+    postgres:17
+    ghcr.io/requarks/wiki:2
+    ghcr.io/requarks/wiki-update-companion:latest
   # ===========================================
 
 jobs:
