@@ -1,23 +1,15 @@
-name: 批量同步镜像 DockerHub/GHCR -> 阿里云镜像仓库
+name: 批量同步镜像 DockerHub/GHCR -> 同步wiki相关镜像
 run-name: 镜像批量同步任务
 on:
-  workflow_dispatch: # 网页手动运行
-  # 如需定时每日同步，解除注释
-  # schedule:
-  #   - cron: '0 1 * * *'
+  workflow_dispatch:
 
 env:
-  # =====================【自行修改此处配置】=====================
   SWR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
   SWR_NAMESPACE: seasky-images
-  # 镜像清单，支持两种格式：
-  # 1. DockerHub：postgres:17
-  # 2. GHCR完整地址：ghcr.io/requarks/wiki:2
   IMAGE_LIST: |
     postgres:17
     ghcr.io/requarks/wiki:2
     ghcr.io/requarks/wiki-update-companion:latest
-  # ==============================================================
 
 jobs:
   sync-task:
@@ -35,16 +27,14 @@ jobs:
         run: |
           echo "===== 目标仓库：${SWR_REGISTRY}/${SWR_NAMESPACE} ====="
           echo "${IMAGE_LIST}" | while read IMAGE_RAW; do
-            # 跳过空行
             [[ -z "${IMAGE_RAW}" ]] && continue
 
-            # 判断是否带域名：ghcr.io / docker.io
             if [[ "${IMAGE_RAW}" == ghcr.io/* ]]; then
-              # GHCR镜像
               SRC="docker://${IMAGE_RAW}"
-              IMAGE_PATH="${IMAGE_RAW#ghcr.io/}"
+              IMAGE_PATH_FULL="${IMAGE_RAW#ghcr.io/}"
+              # 关键修复：只保留最后一段 仓库名:tag，移除requarks/
+              IMAGE_PATH="${IMAGE_PATH_FULL##*/}"
             else
-              # DockerHub镜像，自动补齐docker.io
               SRC="docker://docker.io/${IMAGE_RAW}"
               IMAGE_PATH="${IMAGE_RAW}"
             fi
@@ -56,7 +46,6 @@ jobs:
             echo "目标镜像：${DST}"
             echo "============================================="
 
-            # 最多尝试3次同步
             for attempt in {1..3}; do
               if skopeo copy \
                 --all \
