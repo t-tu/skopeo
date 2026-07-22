@@ -1,0 +1,63 @@
+name: 镜像同步 DockerHub -> 华为云SWR
+run-name: 同步mysql & requarks/wiki
+on:
+  workflow_dispatch: # 【核心】支持网页手动点击启动任务
+  # schedule:
+  #   - cron: '0 1 * * *' # 解除注释开启每日凌晨1点自动同步
+
+env:
+  # =========【务必修改为你自己的信息】=========
+  SWR_REGISTRY: swr.cn-east-3.myhuaweicloud.com
+  SWR_NAMESPACE: library
+  # 需要同步的镜像列表 格式：仓库名/镜像:标签
+  IMAGE_LIST: |
+    library/mysql:8.0
+    requarks/wiki:2
+    library/postgres:17
+  # ===========================================
+
+jobs:
+  sync_image_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 更新系统并安装 skopeo
+        run: |
+          sudo apt update -y
+          sudo apt install -y skopeo
+
+      - name: 批量执行镜像同步
+        env:
+          SWR_USER: ${{ secrets.SWR_USER }}
+          SWR_PWD: ${{ secrets.SWR_PWD }}
+        run: |
+          echo "===== 目标仓库地址：${SWR_REGISTRY}/${SWR_NAMESPACE} ====="
+          echo "${IMAGE_LIST}" | while read IMAGE; do
+            # 跳过空行
+            [[ -z "$IMAGE" ]] && continue
+
+            SRC_IMAGE="docker://docker.io/${IMAGE}"
+            DST_IMAGE="docker://${SWR_REGISTRY}/${SWR_NAMESPACE}/${IMAGE#*/}"
+
+            echo "====================================="
+            echo "源镜像：${SRC_IMAGE}"
+            echo "目标镜像：${DST_IMAGE}"
+            echo "====================================="
+
+            # 最多重试3次
+            for try_times in {1..3}; do
+              if skopeo copy \
+                --all \
+                --preserve-digests \
+                --retry-times 2 \
+                "${SRC_IMAGE}" \
+                "${DST_IMAGE}" \
+                --dest-creds "${SWR_USER}:${SWR_PWD}"
+              then
+                echo "✅ ${IMAGE} 同步成功"
+                break
+              else
+                echo "❌ ${IMAGE} 第${try_times}次同步失败，等待10s重试"
+                sleep 10
+              fi
+            done
+          done
