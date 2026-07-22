@@ -1,4 +1,4 @@
-name: 批量同步镜像 DockerHub/GHCR -> 同步wiki相关镜像
+name: 批量同步镜像 DockerHub/GHCR -> 同步anythingllm相关镜像
 run-name: 镜像批量同步任务
 on:
   workflow_dispatch:
@@ -7,9 +7,7 @@ env:
   SWR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
   SWR_NAMESPACE: seasky-images
   IMAGE_LIST: |
-    postgres:17
-    ghcr.io/requarks/wiki:2
-    ghcr.io/requarks/wiki-update-companion:latest
+    mintplexlabs/anythingllm
 
 jobs:
   sync-task:
