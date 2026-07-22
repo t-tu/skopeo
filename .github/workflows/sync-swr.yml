@@ -1,5 +1,5 @@
-name: 镜像同步 DockerHub -> 华为云SWR
-run-name: 同步mysql & requarks/wiki
+name: 镜像同步 DockerHub -> 阿里云镜像仓库
+run-name: 同步wiki相关容器
 on:
   workflow_dispatch: # 【核心】支持网页手动点击启动任务
   # schedule:
@@ -7,8 +7,8 @@ on:
 
 env:
   # =========【务必修改为你自己的信息】=========
-  SWR_REGISTRY: swr.cn-east-3.myhuaweicloud.com
-  SWR_NAMESPACE: library
+  SWR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  SWR_NAMESPACE: seasky-images
   # 需要同步的镜像列表 格式：仓库名/镜像:标签
   IMAGE_LIST: |
     postgres:17
