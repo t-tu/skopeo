@@ -1,62 +1,75 @@
-name: 镜像同步 DockerHub -> 阿里云镜像仓库
-run-name: 同步wiki相关容器
+name: 批量同步镜像 DockerHub/GHCR -> 阿里云镜像仓库
+run-name: 镜像批量同步任务
 on:
-  workflow_dispatch: # 【核心】支持网页手动点击启动任务
+  workflow_dispatch: # 网页手动运行
+  # 如需定时每日同步，解除注释
   # schedule:
-  #   - cron: '0 1 * * *' # 解除注释开启每日凌晨1点自动同步
+  #   - cron: '0 1 * * *'
 
 env:
-  # =========【务必修改为你自己的信息】=========
+  # =====================【自行修改此处配置】=====================
   SWR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
   SWR_NAMESPACE: seasky-images
-  # 需要同步的镜像列表 格式：仓库名/镜像:标签
+  # 镜像清单，支持两种格式：
+  # 1. DockerHub：postgres:17
+  # 2. GHCR完整地址：ghcr.io/requarks/wiki:2
   IMAGE_LIST: |
     postgres:17
     ghcr.io/requarks/wiki:2
     ghcr.io/requarks/wiki-update-companion:latest
-  # ===========================================
+  # ==============================================================
 
 jobs:
-  sync_image_job:
+  sync-task:
     runs-on: ubuntu-latest
     steps:
-      - name: 更新系统并安装 skopeo
+      - name: 安装 skopeo
         run: |
           sudo apt update -y
           sudo apt install -y skopeo
 
-      - name: 批量执行镜像同步
+      - name: 执行批量镜像同步
         env:
           SWR_USER: ${{ secrets.SWR_USER }}
           SWR_PWD: ${{ secrets.SWR_PWD }}
         run: |
-          echo "===== 目标仓库地址：${SWR_REGISTRY}/${SWR_NAMESPACE} ====="
-          echo "${IMAGE_LIST}" | while read IMAGE; do
+          echo "===== 目标仓库：${SWR_REGISTRY}/${SWR_NAMESPACE} ====="
+          echo "${IMAGE_LIST}" | while read IMAGE_RAW; do
             # 跳过空行
-            [[ -z "$IMAGE" ]] && continue
+            [[ -z "${IMAGE_RAW}" ]] && continue
 
-            SRC_IMAGE="docker://docker.io/${IMAGE}"
-            DST_IMAGE="docker://${SWR_REGISTRY}/${SWR_NAMESPACE}/${IMAGE#*/}"
+            # 判断是否带域名：ghcr.io / docker.io
+            if [[ "${IMAGE_RAW}" == ghcr.io/* ]]; then
+              # GHCR镜像
+              SRC="docker://${IMAGE_RAW}"
+              IMAGE_PATH="${IMAGE_RAW#ghcr.io/}"
+            else
+              # DockerHub镜像，自动补齐docker.io
+              SRC="docker://docker.io/${IMAGE_RAW}"
+              IMAGE_PATH="${IMAGE_RAW}"
+            fi
 
-            echo "====================================="
-            echo "源镜像：${SRC_IMAGE}"
-            echo "目标镜像：${DST_IMAGE}"
-            echo "====================================="
+            DST="docker://${SWR_REGISTRY}/${SWR_NAMESPACE}/${IMAGE_PATH}"
 
-            # 最多重试3次
-            for try_times in {1..3}; do
+            echo "============================================="
+            echo "源镜像：${SRC}"
+            echo "目标镜像：${DST}"
+            echo "============================================="
+
+            # 最多尝试3次同步
+            for attempt in {1..3}; do
               if skopeo copy \
                 --all \
                 --preserve-digests \
                 --retry-times 2 \
-                "${SRC_IMAGE}" \
-                "${DST_IMAGE}" \
+                "${SRC}" \
+                "${DST}" \
                 --dest-creds "${SWR_USER}:${SWR_PWD}"
               then
-                echo "✅ ${IMAGE} 同步成功"
+                echo "✅ ${IMAGE_RAW} 同步完成"
                 break
               else
-                echo "❌ ${IMAGE} 第${try_times}次同步失败，等待10s重试"
+                echo "❌ ${IMAGE_RAW} 第${attempt}次同步失败，等待10秒重试"
                 sleep 10
               fi
             done
