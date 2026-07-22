@@ -17,6 +17,7 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y skopeo
+          skopeo --version
 
       - name: 执行批量镜像同步
         env:
@@ -24,17 +25,21 @@ jobs:
           SWR_PWD: ${{ secrets.SWR_PWD }}
         run: |
           echo "===== 目标仓库：${SWR_REGISTRY}/${SWR_NAMESPACE} ====="
-          echo "${IMAGE_LIST}" | while read IMAGE_RAW; do
+          
+          while IFS= read -r IMAGE_RAW; do
+            [[ -z "${IMAGE_RAW}" ]] && continue
+            IMAGE_RAW=$(echo "${IMAGE_RAW}" | xargs)
             [[ -z "${IMAGE_RAW}" ]] && continue
 
             if [[ "${IMAGE_RAW}" == ghcr.io/* ]]; then
               SRC="docker://${IMAGE_RAW}"
               IMAGE_PATH_FULL="${IMAGE_RAW#ghcr.io/}"
-              # 关键修复：只保留最后一段 仓库名:tag，移除requarks/
+              # ghcr 同样只保留镜像名称
               IMAGE_PATH="${IMAGE_PATH_FULL##*/}"
             else
               SRC="docker://docker.io/${IMAGE_RAW}"
-              IMAGE_PATH="${IMAGE_RAW}"
+              # ✅ 核心：截取最后一段，丢弃 mintplexlabs/
+              IMAGE_PATH="${IMAGE_RAW##*/}"
             fi
 
             DST="docker://${SWR_REGISTRY}/${SWR_NAMESPACE}/${IMAGE_PATH}"
@@ -44,11 +49,11 @@ jobs:
             echo "目标镜像：${DST}"
             echo "============================================="
 
+            export SKOPEO_TIMEOUT=300
             for attempt in {1..3}; do
               if skopeo copy \
                 --all \
-                --preserve-digests \
-                --retry-times 2 \
+                --retry-times 3 \
                 "${SRC}" \
                 "${DST}" \
                 --dest-creds "${SWR_USER}:${SWR_PWD}"
@@ -56,8 +61,8 @@ jobs:
                 echo "✅ ${IMAGE_RAW} 同步完成"
                 break
               else
-                echo "❌ ${IMAGE_RAW} 第${attempt}次同步失败，等待10秒重试"
-                sleep 10
+                echo "❌ ${IMAGE_RAW} 第${attempt}次同步失败，等待15秒重试"
+                sleep 15
               fi
             done
-          done
+          done <<< "${IMAGE_LIST}"
